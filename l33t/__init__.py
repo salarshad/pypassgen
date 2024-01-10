@@ -1,0 +1,1 @@
+from .leet import substitute
