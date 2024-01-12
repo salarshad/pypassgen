@@ -48,8 +48,6 @@ def calculate_stats(word_list):
 
     return stats
 
-# The following would be equivalent to the module.exports in JavaScript
-# and would allow these functions to be imported into other Python scripts.
 if __name__ == "__main__":
     # Example usage
     word_list = ["example", "words", "for", "statistics"]
