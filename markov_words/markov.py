@@ -1,9 +1,9 @@
-import random
+import secrets
 
 def choose_letter(letter_stats):
     if not letter_stats:
         raise ValueError("NoStats")
-    draw = random.randint(0, letter_stats['total'] - 1)
+    draw = secrets.randbelow(letter_stats['total'] - 1)
     count = 0
     for letter, freq in letter_stats.items():
         if letter == 'total':
