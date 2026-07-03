@@ -1,3 +1,5 @@
+import secrets
+
 number_subs = [
     ('o', '0'),
     ('i', '1'),
@@ -30,40 +32,42 @@ symbol_subs = [
 ]
 
 def try_sub(word, subst):
-    letter_index = word.find(subst[0])
-    if letter_index >= 0:
-        word = word[:letter_index] + subst[1] + word[letter_index+1:]
+    source, replacement = subst
+    letter_indexes = [index for index, letter in enumerate(word) if letter == source]
+    if letter_indexes:
+        letter_index = letter_indexes[secrets.randbelow(len(letter_indexes))]
+        word = word[:letter_index] + replacement + word[letter_index+1:]
     return word
+
+def _applicable_substitutions(word, substitutions):
+    return [subst for subst in substitutions if subst[0] in word]
 
 def substitute(word, number_of_substitutions=1):
     if not word:
         raise ValueError("No word given")
-    
-    number = True
-    num_index = 0
-    sym_index = 0
-    num_length = len(number_subs)
-    sym_length = len(symbol_subs)
-    orig_word = word
-    
-    while number_of_substitutions > 0 and (num_index < num_length or sym_index < sym_length):
-        if number:
-            while num_index < num_length:
-                orig_word = word
-                word = try_sub(word, number_subs[num_index])
-                if word != orig_word:
-                    number_of_substitutions -= 1
-                    break
-                num_index += 1
+
+    use_number = bool(secrets.randbelow(2))
+    while number_of_substitutions > 0:
+        substitutions = number_subs if use_number else symbol_subs
+        applicable = _applicable_substitutions(word, substitutions)
+        if not applicable:
+            fallback = _applicable_substitutions(
+                word,
+                symbol_subs if use_number else number_subs
+            )
+            if not fallback:
+                break
+            substitutions = fallback
         else:
-            while sym_index < sym_length:
-                orig_word = word
-                word = try_sub(word, symbol_subs[sym_index])
-                if word != orig_word:
-                    number_of_substitutions -= 1
-                    break
-                sym_index += 1
-        number = not number
+            substitutions = applicable
+
+        selected_sub = substitutions[secrets.randbelow(len(substitutions))]
+        new_word = try_sub(word, selected_sub)
+        if new_word == word:
+            break
+        word = new_word
+        number_of_substitutions -= 1
+        use_number = not use_number
     
     return word
 

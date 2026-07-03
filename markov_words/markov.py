@@ -73,15 +73,37 @@ def estimate_entropy_bits(stats, word):
         entropy_bits += _entropy_for_letter(transition_stats, word[index])
     return entropy_bits
 
-def generate(stats, word_length, number_of_words=1, min_entropy_bits=None, max_attempts_per_word=30):
+def _is_weak_word(word, blocked_words=None):
+    candidate = word.lower()
+    blocked = blocked_words or set()
+    if candidate in blocked:
+        return True
+    if any(candidate[i] == candidate[i + 1] == candidate[i + 2]
+           for i in range(0, max(0, len(candidate) - 2))):
+        return True
+    if candidate.startswith(('pass', 'admin', 'qwer', 'letm')):
+        return True
+    return False
+
+def generate(
+    stats,
+    word_length,
+    number_of_words=1,
+    min_entropy_bits=None,
+    max_attempts_per_word=30,
+    blocked_words=None
+):
     if word_length < 3:
         raise ValueError("Word length must be at least 3 letters")
     if number_of_words < 1:
         raise ValueError("Invalid number of words")
     if min_entropy_bits is not None and min_entropy_bits <= 0:
         raise ValueError("Minimum entropy must be greater than 0")
+    if max_attempts_per_word < 1:
+        raise ValueError("Maximum attempts must be at least 1")
 
     result = []
+    blocked_words = {word.lower() for word in blocked_words} if blocked_words else set()
     i = 0
     while i < number_of_words:
         attempts = 0
@@ -98,13 +120,15 @@ def generate(stats, word_length, number_of_words=1, min_entropy_bits=None, max_a
                 continue
 
             attempts += 1
+            if _is_weak_word(word, blocked_words):
+                continue
             if min_entropy_bits is None or entropy_bits >= min_entropy_bits:
                 result.append(word)
                 i += 1
                 break
 
         if attempts >= max_attempts_per_word:
-            raise ValueError("Unable to generate words meeting entropy threshold")
+            raise ValueError("Unable to generate words meeting security constraints")
     return result
 
 # Example usage:
