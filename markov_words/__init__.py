@@ -1,1 +1,1 @@
-from .markov import generate
+from .markov import generate, estimate_entropy_bits
