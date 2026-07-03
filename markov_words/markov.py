@@ -1,6 +1,14 @@
 import secrets
 import math
 
+VOWELS = set('aeiouy')
+
+
+def _cv_class(letter):
+    """Return 'V' if *letter* is a vowel, 'C' otherwise."""
+    return 'V' if letter in VOWELS else 'C'
+
+
 def choose_letter(letter_stats):
     letter, _ = choose_letter_with_entropy(letter_stats)
     return letter
@@ -22,12 +30,39 @@ def choose_letter_with_entropy(letter_stats):
             return letter, -math.log2(probability)
     raise ValueError("NoStats")  # shouldn't get here with proper stats
 
-def _get_transition_stats(stats, key, index, word_length):
+def _get_transition_stats(stats, key2, index, word_length, key3=None):
+    """Return the letter-frequency distribution for the next letter.
+
+    Lookup order:
+    1. ``stats['letters3']`` keyed on the last 3 letters (*key3*), if available.
+    2. Position-specific 2-letter table (``letters`` / ``penultimateLetters`` /
+       ``lastLetters``) keyed on *key2* — the existing behaviour.
+    3. ``stats['cv_letters']`` keyed on the CV pattern of *key2*, as a
+       smoothing fallback when both trigram and bigram lookups miss.
+    """
+    # 1. Trigram lookup
+    if key3 is not None and 'letters3' in stats:
+        result = stats['letters3'].get(key3)
+        if result:
+            return result
+
+    # 2. Position-specific bigram lookup (original behaviour)
     if index < word_length - 2:
-        return stats['letters'].get(key)
-    if index == word_length - 2:
-        return stats['penultimateLetters'].get(key)
-    return stats['lastLetters'].get(key)
+        result = stats['letters'].get(key2)
+    elif index == word_length - 2:
+        result = stats['penultimateLetters'].get(key2)
+    else:
+        result = stats['lastLetters'].get(key2)
+
+    if result:
+        return result
+
+    # 3. CV-pattern fallback
+    if 'cv_letters' in stats and len(key2) == 2:
+        cv_key = _cv_class(key2[0]) + _cv_class(key2[1])
+        return stats['cv_letters'].get(cv_key)
+
+    return result  # may be None
 
 def _entropy_for_letter(letter_stats, letter):
     if not letter_stats:
@@ -45,12 +80,14 @@ def create_word(stats, word_length, include_entropy=False):
     entropy_bits += second_bits
     letters = [l1, l2]
 
+    l0 = None   # letter before the current bigram (enables trigram lookup)
     for index in range(2, word_length):
-        transition_stats = _get_transition_stats(stats, l1 + l2, index, word_length)
+        key3 = l0 + l1 + l2 if l0 is not None else None
+        transition_stats = _get_transition_stats(stats, l1 + l2, index, word_length, key3=key3)
         next_letter, next_bits = choose_letter_with_entropy(transition_stats)
         letters.append(next_letter)
         entropy_bits += next_bits
-        l1, l2 = l2, next_letter
+        l0, l1, l2 = l1, l2, next_letter
 
     word = ''.join(letters)
     if include_entropy:
@@ -68,8 +105,9 @@ def estimate_entropy_bits(stats, word):
     )
 
     for index in range(2, len(word)):
-        context = word[index - 2:index]
-        transition_stats = _get_transition_stats(stats, context, index, len(word))
+        context2 = word[index - 2:index]
+        key3 = word[index - 3:index] if index >= 3 else None
+        transition_stats = _get_transition_stats(stats, context2, index, len(word), key3=key3)
         entropy_bits += _entropy_for_letter(transition_stats, word[index])
     return entropy_bits
 
@@ -83,6 +121,33 @@ def _is_weak_word(word, blocked_words=None):
         return True
     if candidate.startswith(('pass', 'admin', 'qwer', 'letm')):
         return True
+    return False
+
+
+def _is_unpronounceable(word):
+    """Return True if *word* contains patterns that make it hard to say aloud.
+
+    Rejects:
+    - Runs of ≥ 3 consecutive consonants (e.g. 'strng', 'bkl').
+    - Runs of ≥ 3 consecutive vowels (e.g. 'aei').
+    - Any 4-letter window with no vowel.
+    """
+    candidate = word.lower()
+    consonant_run = 0
+    vowel_run = 0
+    for ch in candidate:
+        if ch in VOWELS:
+            vowel_run += 1
+            consonant_run = 0
+        else:
+            consonant_run += 1
+            vowel_run = 0
+        if consonant_run >= 3 or vowel_run >= 3:
+            return True
+    # No vowel in any 4-letter window
+    for i in range(len(candidate) - 3):
+        if not any(c in VOWELS for c in candidate[i:i + 4]):
+            return True
     return False
 
 def generate(
@@ -120,7 +185,7 @@ def generate(
                 continue
 
             attempts += 1
-            if _is_weak_word(word, blocked_words):
+            if _is_weak_word(word, blocked_words) or _is_unpronounceable(word):
                 continue
             if min_entropy_bits is None or entropy_bits >= min_entropy_bits:
                 result.append(word)

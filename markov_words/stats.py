@@ -1,3 +1,11 @@
+_VOWELS = set('aeiouy')
+
+
+def _cv_class(letter):
+    """Return 'V' if *letter* is a vowel, 'C' otherwise."""
+    return 'V' if letter in _VOWELS else 'C'
+
+
 def count_letter(totals, letter):
     stat = totals.get(letter, 0)
     totals[letter] = stat + 1
@@ -21,15 +29,34 @@ def incorporate_word(stats, word):
 
     # remaining letter stats, relative to preceding 2 letters
     di = l1 + l2
+    l0 = None   # letter before the current bigram (for trigram key)
     for j in range(2, len(word)):
         l3 = word[j]
-        if j < len(word) - 2:
+        is_middle = j < len(word) - 2
+        is_penultimate = j == len(word) - 2
+
+        # Existing 2-letter tables (unchanged)
+        if is_middle:
             totals = stats['letters'].setdefault(di, {'total': 0})
-        elif j < len(word) - 1:
+        elif is_penultimate:
             totals = stats['penultimateLetters'].setdefault(di, {'total': 0})
         else:
             totals = stats['lastLetters'].setdefault(di, {'total': 0})
         count_letter(totals, l3)
+
+        # New: trigram table for middle positions (requires 3 previous letters)
+        if is_middle and l0 is not None:
+            tri = l0 + di
+            totals3 = stats['letters3'].setdefault(tri, {'total': 0})
+            count_letter(totals3, l3)
+
+        # New: CV-pattern table for middle positions
+        if is_middle:
+            cv_key = _cv_class(di[0]) + _cv_class(di[1])
+            totals_cv = stats['cv_letters'].setdefault(cv_key, {'total': 0})
+            count_letter(totals_cv, l3)
+
+        l0 = di[0]
         di = di[1] + l3
 
 def calculate_stats(word_list):
@@ -37,7 +64,9 @@ def calculate_stats(word_list):
         'secondLetters': {},
         'letters': {},
         'penultimateLetters': {},
-        'lastLetters': {}
+        'lastLetters': {},
+        'letters3': {},
+        'cv_letters': {},
     }
 
     if not word_list:
